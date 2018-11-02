@@ -473,7 +473,7 @@ end
 # }}}
 
 # {{{ Update solution (for all dimensions)
-@hascuda function knl_updatesolution!(::Val{dim}, ::Val{N}, rhs, Q, vgeo, nelem, rka, rkb, dt, advection) where {dim, N}
+@hascuda function knl_updatesolution_v1!(::Val{dim}, ::Val{N}, rhs, Q, vgeo, nelem, rka, rkb, dt, advection) where {dim, N}
   (i, j, k) = threadIdx()
   e = blockIdx().x
 
@@ -488,6 +488,185 @@ end
   end
   nothing
 end
+
+
+@hascuda function knl_updatesolution_v2!(::Val{dim}, ::Val{N}, rhs, Q, vgeo, nelem, rka, rkb, dt, advection) where {dim, N}
+  (i, j, k) = threadIdx()
+  e = blockIdx().x
+
+
+  Nq = N+1
+  @inbounds if i <= Nq && j <= Nq && k <= Nq
+    if e <= nelem
+      n = i + (j-1) * Nq + (k-1) * Nq * Nq
+      MJI = vgeo[n, _MJI, e]
+      rQ1 = Q[n, 1, e]
+      rQ2 = Q[n, 2, e]
+      rQ3 = Q[n, 3, e]
+      rrhs1 = rhs[n, 1, e]
+      rrhs2 = rhs[n, 2, e]
+      rrhs3 = rhs[n, 3, e]
+
+      rQ1 += rkb * dt * rrhs1 * MJI
+      rQ2 += rkb * dt * rrhs2 * MJI
+      rQ3 += rkb * dt * rrhs3 * MJI
+
+      rrhs1 *= rka
+      rrhs2 *= rka
+      rrhs3 *= rka
+
+      Q[n, 1, e] = rQ1
+      Q[n, 2, e] = rQ2
+      Q[n, 3, e] = rQ3
+      rhs[n, 1, e] = rrhs1
+      rhs[n, 2, e] = rrhs2
+      rhs[n, 3, e] = rrhs3
+    end
+  end
+  nothing
+end
+@hascuda function knl_updatesolution!(::Val{dim}, ::Val{N}, rhs, Q, vgeo, nelem, rka, rkb, dt, advection) where {dim, N}
+  (i, j, k) = threadIdx()
+  e1 = blockIdx().x
+  e2 = e1 + gridDim().x
+
+
+  Nq = N+1
+  @inbounds if i <= Nq && j <= Nq && k <= Nq
+    if e1 <= nelem
+      n = i + (j-1) * Nq + (k-1) * Nq * Nq
+      MJI_1 = vgeo[n, _MJI, e1]
+      rQ1_1 = Q[n, 1, e1]
+      rQ2_1 = Q[n, 2, e1]
+      rQ3_1 = Q[n, 3, e1]
+      rrhs1_1 = rhs[n, 1, e1]
+      rrhs2_1 = rhs[n, 2, e1]
+      rrhs3_1 = rhs[n, 3, e1]
+
+      MJI_2 = vgeo[n, _MJI, e2]
+      rQ1_2 = Q[n, 1, e2]
+      rQ2_2 = Q[n, 2, e2]
+      rQ3_2 = Q[n, 3, e2]
+      rrhs1_2 = rhs[n, 1, e2]
+      rrhs2_2 = rhs[n, 2, e2]
+      rrhs3_2 = rhs[n, 3, e2]
+
+      MJI_2 = vgeo[n, _MJI, e2]
+      rQ1_2 = Q[n, 1, e2]
+      rQ2_2 = Q[n, 2, e2]
+      rQ3_2 = Q[n, 3, e2]
+      rrhs1_2 = rhs[n, 1, e2]
+      rrhs2_2 = rhs[n, 2, e2]
+      rrhs3_2 = rhs[n, 3, e2]
+
+      rQ1_1 += rkb * dt * rrhs1_1 * MJI_1
+      rQ2_1 += rkb * dt * rrhs2_1 * MJI_1
+      rQ3_1 += rkb * dt * rrhs3_1 * MJI_1
+
+      rrhs1_1 *= rka
+      rrhs2_1 *= rka
+      rrhs3_1 *= rka
+
+      rQ1_2 += rkb * dt * rrhs1_2 * MJI_2
+      rQ2_2 += rkb * dt * rrhs2_2 * MJI_2
+      rQ3_2 += rkb * dt * rrhs3_2 * MJI_2
+
+      rrhs1_2 *= rka
+      rrhs2_2 *= rka
+      rrhs3_2 *= rka
+
+      Q[n, 1, e1] = rQ1_1
+      Q[n, 2, e1] = rQ2_1
+      Q[n, 3, e1] = rQ3_1
+      rhs[n, 1, e1] = rrhs1_1
+      rhs[n, 2, e1] = rrhs2_1
+      rhs[n, 3, e1] = rrhs3_1
+
+      if e2 <= nelem
+        Q[n, 1, e2] = rQ1_2
+        Q[n, 2, e2] = rQ2_2
+        Q[n, 3, e2] = rQ3_2
+        rhs[n, 1, e2] = rrhs1_2
+        rhs[n, 2, e2] = rrhs2_2
+        rhs[n, 3, e2] = rrhs3_2
+      end
+    end
+  end
+  nothing
+end
+#=
+@hascuda function knl_updatesolution!(::Val{dim}, ::Val{N}, rhs, Q, vgeo, nelem, rka, rkb, dt, advection) where {dim, N}
+  (i, j, k) = threadIdx()
+  e1 = blockIdx().x
+  e2 = e1 + blockDim().x
+
+  Nq = N+1
+  @inbounds if i <= Nq && j <= Nq && k <= Nq && e1 <= nelem
+    n = i + (j-1) * Nq + (k-1) * Nq * Nq
+    MJI_1 = vgeo[n, _MJI, e1]
+    rQ1_1 = Q[n, 1, e1]
+    rQ2_1 = Q[n, 2, e1]
+    rQ3_1 = Q[n, 3, e1]
+    rrhs1_1 = rhs[n, 1, e1]
+    rrhs2_1 = rhs[n, 2, e1]
+    rrhs3_1 = rhs[n, 3, e1]
+
+    if e2 <= nelem
+      MJI_2 = vgeo[n, _MJI, e2]
+      rQ1_2 = Q[n, 1, e2]
+      rQ2_2 = Q[n, 2, e2]
+      rQ3_2 = Q[n, 3, e2]
+      rrhs1_2 = rhs[n, 1, e2]
+      rrhs2_2 = rhs[n, 2, e2]
+      rrhs3_2 = rhs[n, 3, e2]
+    else
+      MJI_2 = zero(MJI_1)
+      rQ1_2 = zero(MJI_1)
+      rQ2_2 = zero(MJI_1)
+      rQ3_2 = zero(MJI_1)
+      rrhs1_2 = zero(MJI_1)
+      rrhs2_2 = zero(MJI_1)
+      rrhs3_2 = zero(MJI_1)
+    end
+
+    rQ1_1 += rkb * dt * rrhs1_1 * MJI_1
+    rQ2_1 += rkb * dt * rrhs2_1 * MJI_1
+    rQ3_1 += rkb * dt * rrhs3_1 * MJI_1
+
+    rrhs1_1 *= rka
+    rrhs2_1 *= rka
+    rrhs3_1 *= rka
+
+    if e2 <= nelem
+      rQ1_2 += rkb * dt * rrhs1_2 * MJI_2
+      rQ2_2 += rkb * dt * rrhs2_2 * MJI_2
+      rQ3_2 += rkb * dt * rrhs3_2 * MJI_2
+
+      rrhs1_2 *= rka
+      rrhs2_2 *= rka
+      rrhs3_2 *= rka
+    end
+
+    Q[n, 1, e1] = rQ1_1
+    Q[n, 2, e1] = rQ2_1
+    Q[n, 3, e1] = rQ3_1
+    rhs[n, 1, e1] = rrhs1_1
+    rhs[n, 2, e1] = rrhs2_1
+    rhs[n, 3, e1] = rrhs3_1
+
+    if e2 <= nelem
+      Q[n, 1, e2] = rQ1_2
+      Q[n, 2, e2] = rQ2_2
+      Q[n, 3, e2] = rQ3_2
+      rhs[n, 1, e2] = rrhs1_2
+      rhs[n, 2, e2] = rrhs2_2
+      rhs[n, 3, e2] = rrhs3_2
+    end
+
+  end
+  nothing
+end
+=#
 # }}}
 
 # {{{ Fill sendQ on device with Q (for all dimensions)
@@ -569,9 +748,15 @@ end
         knl_fluxrhs!(Val(dim), Val(N), d_rhsL, d_QL, d_sgeo, nelem, d_vmapM, d_vmapP, d_elemtobndy, gravity, δnl))
 end
 
-@hascuda function updatesolution!(::Val{dim}, ::Val{N}, d_rhsL::CuArray, d_QL, d_vgeoL, elems, rka, rkb, dt, advection) where {dim, N}
+@hascuda function updatesolution_v1!(::Val{dim}, ::Val{N}, d_rhsL::CuArray, d_QL, d_vgeoL, elems, rka, rkb, dt, advection) where {dim, N}
   nelem = length(elems)
   @cuda(threads=ntuple(j->N+1, dim), blocks=nelem,
+        knl_updatesolution_v1!(Val(dim), Val(N), d_rhsL, d_QL, d_vgeoL, nelem, rka, rkb, dt, advection))
+end
+
+@hascuda function updatesolution!(::Val{dim}, ::Val{N}, d_rhsL::CuArray, d_QL, d_vgeoL, elems, rka, rkb, dt, advection) where {dim, N}
+  nelem = length(elems)
+  @cuda(threads=ntuple(j->N+1, dim), blocks=div(nelem+1, 2),
         knl_updatesolution!(Val(dim), Val(N), d_rhsL, d_QL, d_vgeoL, nelem, rka, rkb, dt, advection))
 end
 # }}}
@@ -612,6 +797,87 @@ end
 # }}}
 
 # {{{ RK loop
+function kernelperformance(::Val{dim}, ::Val{N}, mesh, vgeo, sgeo, Q, rhs, D,
+                           dt, nsteps, tout, vmapM, vmapP, mpicomm,
+                           gravity, δnl, advection;
+                           ArrType=ArrType, plotstep=0) where {dim, N}
+
+  DFloat = eltype(Q)
+  nruns = 10
+
+  src = CuArray{DFloat}(div(length(mesh.realelems) * (N+1)^dim * (7 + 6), 2))
+  dst = CuArray{DFloat}(div(length(mesh.realelems) * (N+1)^dim * (7 + 6), 2))
+
+  Mem.transfer!(dst.buf, src.buf, sizeof(src); async=true)
+
+  synchronize()
+  transfer_start = time_ns()
+  for k = 1:nruns
+    Mem.transfer!(dst.buf, src.buf, sizeof(src); async=true)
+  end
+  synchronize()
+  transfer_stop = time_ns()
+
+  Q = rand(size(Q)...)
+  rhs = rand(size(rhs)...)
+
+  d_QL, d_rhsL = ArrType(Q), ArrType(rhs)
+  d_vgeoL = ArrType(vgeo)
+
+  updatesolution!(Val(dim), Val(N), d_rhsL, d_QL, d_vgeoL, mesh.realelems,
+                  DFloat(2), DFloat(3), DFloat(4), advection)
+
+  Q_v2 = similar(Q)
+  rhs_v2 = similar(rhs)
+  Q_v2 .= d_QL
+  rhs_v2 .= d_rhsL
+
+  d_QL .= Q
+  d_rhsL .= rhs
+
+  updatesolution_v1!(Val(dim), Val(N), d_rhsL, d_QL, d_vgeoL, mesh.realelems,
+                     DFloat(2), DFloat(3), DFloat(4), advection)
+
+  Q_v1 = similar(Q)
+  rhs_v1 = similar(rhs)
+  Q_v1 .= d_QL
+  rhs_v1 .= d_rhsL
+
+  println()
+  println()
+  @show extrema(Q_v1 - Q_v2)
+  @show extrema(rhs_v1 - rhs_v2)
+  println()
+  println()
+  @show extrema(Q - Q_v2)
+  @show extrema(rhs - rhs_v2)
+  println()
+  println()
+
+  synchronize()
+  update_start = time_ns()
+  for k = 1:nruns
+    updatesolution!(Val(dim), Val(N), d_rhsL, d_QL, d_vgeoL, mesh.realelems,
+                    DFloat(1), DFloat(1), DFloat(1), advection)
+  end
+  synchronize()
+  update_stop = time_ns()
+
+  synchronize()
+  update_v1_start = time_ns()
+  for k = 1:nruns
+    updatesolution_v1!(Val(dim), Val(N), d_rhsL, d_QL, d_vgeoL, mesh.realelems,
+                    DFloat(1), DFloat(1), DFloat(1), advection)
+  end
+  synchronize()
+  update_v1_stop = time_ns()
+
+  GB = length(mesh.realelems) * (N+1)^dim * (7 + 6) * sizeof(DFloat) * 1e-9
+  @show nruns * GB / ((transfer_stop - transfer_start) * 1e-9)
+  @show nruns * GB / ((update_stop - update_start) * 1e-9)
+  @show nruns * GB / ((update_v1_stop - update_v1_start) * 1e-9)
+end
+
 function lowstorageRK(::Val{dim}, ::Val{N}, mesh, vgeo, sgeo, Q, rhs, D,
                       dt, nsteps, tout, vmapM, vmapP, mpicomm,
                       gravity, δnl, advection;
@@ -678,7 +944,7 @@ function lowstorageRK(::Val{dim}, ::Val{N}, mesh, vgeo, sgeo, Q, rhs, D,
   d_vgeoC = reshape(d_vgeoL, vgeoshape)
 
   start_time = t1 = time_ns()
-  for step = 1:nsteps
+  for step = 1:10
     for s = 1:length(RKA)
       # post MPI receives
       for n = 1:nnabr
@@ -831,7 +1097,7 @@ function swe(::Val{dim}, ::Val{N}, mpicomm, ic, mesh, tend, gravity, δnl,
   end
 
   mpirank == 0 && println("[DEV] starting time stepper...")
-  lowstorageRK(Val(dim), Val(N), mesh, vgeo, sgeo, Q, rhs, D, dt, nsteps, tout,
+  kernelperformance(Val(dim), Val(N), mesh, vgeo, sgeo, Q, rhs, D, dt, nsteps, tout,
                vmapM, vmapP, mpicomm, gravity, δnl, advection;
                ArrType=ArrType, plotstep=plotstep)
 
@@ -867,13 +1133,13 @@ function main()
 
   #Input Parameters
   N=4
-  Ne=10
+  Ne=500
   iplot=10
   δnl=1
   icase=10
-  time_final=DFloat(0.32)
+  time_final=DFloat(0.01)
   dim=2
-  hardware="cpu"
+  hardware="gpu"
 
   #Initial Conditions
   ic = (x...) -> (0.0, 0.0, 0.0, 0.0)
